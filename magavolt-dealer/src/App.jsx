@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import "./App.css";
 import { db } from "./firebase";
 import { collection, addDoc } from "firebase/firestore";
+
 const emptyForm = {
   name: "",
   mobile: "",
@@ -16,7 +17,7 @@ const emptyForm = {
   state: "Assam",
   org: "",
   vehicle: "",
-  dealer: "Bharat Motors",
+  dealer: "",
   capacity: "3.3 kW",
 };
 
@@ -31,7 +32,8 @@ function getDateTime() {
 }
 
 export default function App() {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("login");
+  const [dealerUser, setDealerUser] = useState(null);
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
 
@@ -62,58 +64,113 @@ export default function App() {
     }));
   }
 
-   
-async function addCustomer(e) {
-  e.preventDefault();
+  // DEALER LOGIN
+  function dealerLogin(e) {
+    e.preventDefault();
 
-  if (!/^\d{10}$/.test(form.mobile)) {
-    alert("Enter valid 10 digit mobile number");
-    return;
-  }
+    const mobile = e.target.mobile.value.trim();
+    const email = e.target.email.value.trim().toLowerCase();
 
-  const customer = {
-    ...form,
-    createDate: getDateTime(),
-    status: "PENDING",
-    createdAt: new Date().toISOString(),
-  };
-
-  try {
-    const docRef = await addDoc(
-      collection(db, "customers"),
-      customer
+    const dealers = JSON.parse(
+      localStorage.getItem("magavoltDealers") || "[]"
     );
 
-    const savedCustomer = {
-      ...customer,
-      id: docRef.id,
+    const dealer = dealers.find(
+      (d) =>
+        d.mobile === mobile &&
+        d.email.toLowerCase() === email
+    );
+
+    if (!dealer) {
+      alert("Dealer not found! Please Register.");
+      return;
+    }
+
+    setDealerUser(dealer);
+    setForm({ ...emptyForm, dealer: dealer.name });
+    setPage("dashboard");
+  }
+
+  // DEALER REGISTRATION
+  function dealerRegister(e) {
+    e.preventDefault();
+
+    const dealer = {
+      name: e.target.name.value.trim(),
+      mobile: e.target.mobile.value.trim(),
+      email: e.target.email.value.trim().toLowerCase(),
+      address: e.target.address.value.trim(),
     };
 
-    setCustomers((previous) => [
-      ...previous,
-      savedCustomer,
-    ]);
+    if (!/^\d{10}$/.test(dealer.mobile)) {
+      alert("Enter valid 10 digit mobile number");
+      return;
+    }
 
-    setForm(emptyForm);
-    setCreateDate(getDateTime());
+    const dealers = JSON.parse(
+      localStorage.getItem("magavoltDealers") || "[]"
+    );
 
-    alert("Customer Registered Successfully!");
-    setPage("customers");
-  } catch (error) {
-    console.error("Firebase Error:", error);
-    alert("Customer Save Failed! Check Firebase.");
+    if (dealers.some((d) => d.mobile === dealer.mobile)) {
+      alert("Mobile number already registered!");
+      return;
+    }
+
+    dealers.push(dealer);
+
+    localStorage.setItem(
+      "magavoltDealers",
+      JSON.stringify(dealers)
+    );
+
+    alert("Dealer Registered Successfully!");
+    setPage("login");
   }
-}
 
-   
+  // CUSTOMER REGISTRATION
+  async function addCustomer(e) {
+    e.preventDefault();
 
-  const pending = customers.filter(
-    (c) => c.status === "PENDING"
-  ).length;
+    if (!/^\d{10}$/.test(form.mobile)) {
+      alert("Enter valid 10 digit mobile number");
+      return;
+    }
 
-  const completed = customers.filter(
-    (c) => c.status === "COMPLETED"
-  ).length;
+    const customer = {
+      ...form,
+      dealer: dealerUser.name,
+      dealerMobile: dealerUser.mobile,
+      createDate: getDateTime(),
+      status: "PENDING",
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      const docRef = await addDoc(
+        collection(db, "customers"),
+        customer
+      );
+
+      const savedCustomer = {
+        ...customer,
+        id: docRef.id,
+      };
+
+      setCustomers((previous) => [
+        ...previous,
+        savedCustomer,
+      ]);
+
+      setForm({ ...emptyForm, dealer: dealerUser.name });
+      setCreateDate(getDateTime());
+
+      alert("Customer Registered Successfully!");
+      setPage("customers");
+    } catch (error) {
+      console.error("Firebase Error:", error);
+      alert("Customer Save Failed! Check Firebase.");
+    }
+  }
 
   function findCustomer() {
     const number = search.trim();
@@ -130,10 +187,22 @@ async function addCustomer(e) {
   }
 
   function openNewCustomer() {
-    setForm(emptyForm);
+    setForm({ ...emptyForm, dealer: dealerUser.name });
     setCreateDate(getDateTime());
     setPage("add");
   }
+
+  const myCustomers = customers.filter(
+    (c) => c.dealerMobile === dealerUser?.mobile
+  );
+
+  const pending = myCustomers.filter(
+    (c) => c.status === "PENDING"
+  ).length;
+
+  const completed = myCustomers.filter(
+    (c) => c.status === "COMPLETED"
+  ).length;
 
   const titles = {
     dashboard: "Dashboard",
@@ -143,10 +212,123 @@ async function addCustomer(e) {
     schedule: "Installation Schedule",
   };
 
+  // LOGIN PAGE
+  if (page === "login") {
+    return (
+      <div className="app">
+        <main className="main">
+          <div className="content">
+            <div className="customerForm">
+              <div className="formHeader">
+                <h2>⚡ MAGAVOLT</h2>
+                <p>Dealer Portal Login</p>
+              </div>
+
+              <form onSubmit={dealerLogin}>
+                <div className="field">
+                  <label>Mobile Number</label>
+                  <input
+                    name="mobile"
+                    maxLength={10}
+                    inputMode="numeric"
+                    placeholder="Registered Mobile"
+                    required
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Registered Gmail</label>
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="Registered Gmail"
+                    required
+                  />
+                </div>
+
+                <button className="primaryBtn" type="submit">
+                  LOGIN
+                </button>
+              </form>
+
+              <p style={{ marginTop: 20 }}>
+                New Dealer?
+              </p>
+
+              <button
+                className="secondaryBtn"
+                onClick={() => setPage("register")}
+              >
+                DEALER REGISTRATION
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // DEALER REGISTRATION PAGE
+  if (page === "register") {
+    return (
+      <div className="app">
+        <main className="main">
+          <div className="content">
+            <form
+              className="customerForm"
+              onSubmit={dealerRegister}
+            >
+              <div className="formHeader">
+                <h2>Dealer Registration</h2>
+                <p>Register your dealership</p>
+              </div>
+
+              <div className="field">
+                <label>Dealer Name *</label>
+                <input name="name" required />
+              </div>
+
+              <div className="field">
+                <label>Mobile Number *</label>
+                <input
+                  name="mobile"
+                  maxLength={10}
+                  inputMode="numeric"
+                  required
+                />
+              </div>
+
+              <div className="field">
+                <label>Gmail *</label>
+                <input name="email" type="email" required />
+              </div>
+
+              <div className="field">
+                <label>Address *</label>
+                <input name="address" required />
+              </div>
+
+              <button className="primaryBtn" type="submit">
+                REGISTER DEALER
+              </button>
+
+              <button
+                type="button"
+                className="secondaryBtn"
+                onClick={() => setPage("login")}
+              >
+                BACK TO LOGIN
+              </button>
+            </form>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // MAIN DEALER APP
   return (
     <div className="app">
-
-      {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="brand">
           <h2>⚡ MAGAVOLT</h2>
@@ -154,38 +336,19 @@ async function addCustomer(e) {
         </div>
 
         <nav>
-          <button
-            className={page === "dashboard" ? "active" : ""}
-            onClick={() => setPage("dashboard")}
-          >
+          <button onClick={() => setPage("dashboard")}>
             🏠 Dashboard
           </button>
-
-          <button
-            className={page === "customers" ? "active" : ""}
-            onClick={() => setPage("customers")}
-          >
+          <button onClick={() => setPage("customers")}>
             👥 My Customers
           </button>
-
-          <button
-            className={page === "add" ? "active" : ""}
-            onClick={openNewCustomer}
-          >
+          <button onClick={openNewCustomer}>
             ➕ New Customer
           </button>
-
-          <button
-            className={page === "tracking" ? "active" : ""}
-            onClick={() => setPage("tracking")}
-          >
+          <button onClick={() => setPage("tracking")}>
             🔎 Customer Tracking
           </button>
-
-          <button
-            className={page === "schedule" ? "active" : ""}
-            onClick={() => setPage("schedule")}
-          >
+          <button onClick={() => setPage("schedule")}>
             📅 Installation Schedule
           </button>
         </nav>
@@ -193,49 +356,42 @@ async function addCustomer(e) {
         <button
           className="logout"
           onClick={() => {
-            if (window.confirm("Logout?")) {
-              setPage("dashboard");
-            }
+            setDealerUser(null);
+            setPage("login");
           }}
         >
           🚪 Logout
         </button>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="main">
-
         <header className="topbar">
           <div>
             <h2>MagaVolt Dealer Portal</h2>
             <p>Customer & Installation Management</p>
           </div>
           <span className="dealerBadge">
-            Dealer: Bharat Motors
+            Dealer: {dealerUser.name}
           </span>
         </header>
 
         <div className="content">
-
           <div className="pageHeading">
             <h1>{titles[page]}</h1>
-            <p>Welcome back, Bharat Motors</p>
+            <p>Welcome back, {dealerUser.name}</p>
           </div>
 
-          {/* DASHBOARD */}
           {page === "dashboard" && (
             <>
               <div className="stats">
                 <div className="statCard blue">
                   <p>Total Customers</p>
-                  <h2>{customers.length}</h2>
+                  <h2>{myCustomers.length}</h2>
                 </div>
-
                 <div className="statCard orange">
                   <p>Pending</p>
                   <h2>{pending}</h2>
                 </div>
-
                 <div className="statCard green">
                   <p>Completed</p>
                   <h2>{completed}</h2>
@@ -251,7 +407,6 @@ async function addCustomer(e) {
                     <h3>New Customer</h3>
                     <p>Register a new customer</p>
                   </div>
-                  <span className="arrow">›</span>
                 </button>
 
                 <button onClick={() => setPage("customers")}>
@@ -260,7 +415,6 @@ async function addCustomer(e) {
                     <h3>My Customers</h3>
                     <p>View registered customers</p>
                   </div>
-                  <span className="arrow">›</span>
                 </button>
 
                 <button onClick={() => setPage("tracking")}>
@@ -269,7 +423,6 @@ async function addCustomer(e) {
                     <h3>Customer Tracking</h3>
                     <p>Track installation status</p>
                   </div>
-                  <span className="arrow">›</span>
                 </button>
 
                 <button onClick={() => setPage("schedule")}>
@@ -278,177 +431,68 @@ async function addCustomer(e) {
                     <h3>Installation Schedule</h3>
                     <p>View installation records</p>
                   </div>
-                  <span className="arrow">›</span>
                 </button>
               </div>
             </>
           )}
 
-          {/* NEW CUSTOMER */}
           {page === "add" && (
             <form className="customerForm" onSubmit={addCustomer}>
               <div className="formHeader">
                 <h2>New Customer Registration</h2>
-                <p>Enter customer information below</p>
               </div>
 
               <div className="formGrid">
-
                 <div className="field">
                   <label>Create Date</label>
                   <input value={createDate} readOnly />
                 </div>
 
-                <div className="field">
-                  <label>Customer Name *</label>
-                  <input
-                    name="name"
-                    placeholder="Customer Full Name"
-                    value={form.name}
-                    onChange={change}
-                    required
-                  />
-                </div>
+                {[
+                  ["name", "Customer Name"],
+                  ["mobile", "Mobile Number"],
+                  ["alternative", "Alternative Mobile"],
+                  ["whatsapp", "WhatsApp Number"],
+                  ["email", "Email ID"],
+                  ["address", "Full Address"],
+                  ["landmark", "Landmark"],
+                  ["pin", "PIN Code"],
+                  ["city", "City"],
+                  ["org", "Org Name"],
+                  ["vehicle", "Vehicle Model"],
+                ].map(([key, label]) => (
+                  <div className="field" key={key}>
+                    <label>{label}</label>
+                    <input
+                      name={key}
+                      value={form[key]}
+                      onChange={change}
+                      required={["name", "mobile", "address", "pin", "city", "vehicle"].includes(key)}
+                      maxLength={["mobile", "alternative", "whatsapp"].includes(key) ? 10 : undefined}
+                    />
+                  </div>
+                ))}
 
                 <div className="field">
-                  <label>Mobile Number *</label>
-                  <input
-                    name="mobile"
-                    placeholder="10 Digit Mobile Number"
-                    value={form.mobile}
-                    onChange={change}
-                    maxLength={10}
-                    inputMode="numeric"
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Alternative Mobile</label>
-                  <input
-                    name="alternative"
-                    placeholder="Alternative Mobile"
-                    value={form.alternative}
-                    onChange={change}
-                    maxLength={10}
-                  />
-                </div>
-
-                <div className="field">
-                  <label>WhatsApp Number</label>
-                  <input
-                    name="whatsapp"
-                    placeholder="WhatsApp Number"
-                    value={form.whatsapp}
-                    onChange={change}
-                    maxLength={10}
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Email ID</label>
-                  <input
-                    name="email"
-                    type="email"
-                    placeholder="Email ID"
-                    value={form.email}
-                    onChange={change}
-                  />
-                </div>
-
-                <div className="field full">
-                  <label>Full Address *</label>
-                  <input
-                    name="address"
-                    placeholder="Village / Town / Address"
-                    value={form.address}
-                    onChange={change}
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Landmark</label>
-                  <input
-                    name="landmark"
-                    placeholder="Landmark"
-                    value={form.landmark}
-                    onChange={change}
-                  />
-                </div>
-
-                <div className="field">
-                  <label>PIN Code *</label>
-                  <input
-                    name="pin"
-                    placeholder="6 Digit PIN Code"
-                    value={form.pin}
-                    onChange={change}
-                    maxLength={6}
-                    inputMode="numeric"
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label>City *</label>
-                  <input
-                    name="city"
-                    placeholder="City"
-                    value={form.city}
-                    onChange={change}
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label>State *</label>
+                  <label>State</label>
                   <input
                     name="state"
                     value={form.state}
                     onChange={change}
-                    required
                   />
                 </div>
 
                 <div className="field">
-                  <label>Org Name</label>
-                  <input
-                    name="org"
-                    placeholder="Organization Name"
-                    value={form.org}
-                    onChange={change}
-                  />
+                  <label>Dealer Name</label>
+                  <input value={dealerUser.name} readOnly />
                 </div>
 
                 <div className="field">
-                  <label>Vehicle Model *</label>
-                  <input
-                    name="vehicle"
-                    placeholder="Vehicle Model"
-                    value={form.vehicle}
-                    onChange={change}
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Dealer Name *</label>
-                  <input
-                    name="dealer"
-                    value={form.dealer}
-                    onChange={change}
-                    required
-                  />
-                </div>
-
-                <div className="field">
-                  <label>Charger Capacity *</label>
+                  <label>Charger Capacity</label>
                   <select
                     name="capacity"
                     value={form.capacity}
                     onChange={change}
-                    required
                   >
                     <option>3.3 kW</option>
                     <option>7.4 kW</option>
@@ -456,99 +500,39 @@ async function addCustomer(e) {
                     <option>22 kW</option>
                   </select>
                 </div>
-
               </div>
 
-              <div className="formActions">
-                <button type="submit" className="primaryBtn">
-                  REGISTER CUSTOMER
-                </button>
-
-                <button
-                  type="button"
-                  className="secondaryBtn"
-                  onClick={() => setPage("dashboard")}
-                >
-                  BACK TO DASHBOARD
-                </button>
-              </div>
+              <button className="primaryBtn" type="submit">
+                REGISTER CUSTOMER
+              </button>
+              <button
+                type="button"
+                className="secondaryBtn"
+                onClick={() => setPage("dashboard")}
+              >
+                BACK TO DASHBOARD
+              </button>
             </form>
           )}
 
-          {/* MY CUSTOMERS */}
           {page === "customers" && (
             <>
-              <div className="listHeader">
-                <h2>Total Customers: {customers.length}</h2>
-                <button className="primaryBtn" onClick={openNewCustomer}>
-                  + New Customer
-                </button>
-              </div>
+              <h2>Total Customers: {myCustomers.length}</h2>
+              <button className="primaryBtn" onClick={openNewCustomer}>
+                + New Customer
+              </button>
 
-              {customers.length === 0 ? (
-                <div className="emptyState">
-                  No customers registered yet.
-                </div>
-              ) : (
-                <div className="customerList">
-                  {customers.map((c) => (
-                    <div
-                      className="customerCard"
-                      key={c.id}
-                      onClick={() => setSelected(c)}
-                    >
-                      <div className="customerCardTop">
-                        <h3>{c.name}</h3>
-                        <span className={`status ${c.status}`}>
-                          {c.status}
-                        </span>
-                      </div>
-
-                      <p>📱 Mobile: {c.mobile}</p>
-                      <p>🚘 Vehicle: {c.vehicle}</p>
-                      <p>📍 Address: {c.address}</p>
-                      <p>📅 Create Date: {c.createDate}</p>
-                      <span className="viewDetails">View Details →</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* CUSTOMER TRACKING */}
-          {page === "tracking" && (
-            <div className="trackingBox">
-              <h2>Customer Tracking</h2>
-              <p>Search customer using registered mobile number.</p>
-
-              <div className="trackingSearch">
-                <input
-                  placeholder="Customer Mobile Number"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  maxLength={10}
-                  inputMode="numeric"
-                />
-
-                <button className="primaryBtn" onClick={findCustomer}>
-                  SEARCH CUSTOMER
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* INSTALLATION SCHEDULE */}
-          {page === "schedule" && (
-            <>
-              <h2 className="sectionTitle">Installation Records</h2>
-
-              {customers.map((c) => (
-                <div className="customerCard" key={c.id}>
+              {myCustomers.map((c) => (
+                <div
+                  className="customerCard"
+                  key={c.id}
+                  onClick={() => setSelected(c)}
+                >
                   <h3>{c.name}</h3>
                   <p>Mobile: {c.mobile}</p>
-                  <p>Create Date: {c.createDate}</p>
                   <p>Vehicle: {c.vehicle}</p>
+                  <p>Address: {c.address}</p>
+                  <p>Create Date: {c.createDate}</p>
                   <span className={`status ${c.status}`}>
                     {c.status}
                   </span>
@@ -557,53 +541,60 @@ async function addCustomer(e) {
             </>
           )}
 
+          {page === "tracking" && (
+            <div className="trackingBox">
+              <h2>Customer Tracking</h2>
+              <input
+                placeholder="Customer Mobile Number"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                maxLength={10}
+              />
+              <button className="primaryBtn" onClick={findCustomer}>
+                SEARCH CUSTOMER
+              </button>
+            </div>
+          )}
+
+          {page === "schedule" &&
+            myCustomers.map((c) => (
+              <div className="customerCard" key={c.id}>
+                <h3>{c.name}</h3>
+                <p>Mobile: {c.mobile}</p>
+                <p>Create Date: {c.createDate}</p>
+                <p>Vehicle: {c.vehicle}</p>
+                <span className={`status ${c.status}`}>
+                  {c.status}
+                </span>
+              </div>
+            ))}
         </div>
 
-        <footer>
-          © 2026 MAGAVOLT EV TECH PVT. LTD.
-        </footer>
+        <footer>© 2026 MAGAVOLT EV TECH PVT. LTD.</footer>
       </main>
 
-      {/* CUSTOMER DETAILS MODAL */}
       {selected && (
         <div className="modal" onClick={() => setSelected(null)}>
-          <div
-            className="modalBox"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modalBox" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <h2>Customer Details</h2>
               <button onClick={() => setSelected(null)}>✕</button>
             </div>
 
-            <div className="detailsGrid">
-              <p><b>Customer Name:</b> {selected.name}</p>
-              <p><b>Mobile Number:</b> {selected.mobile}</p>
-              <p><b>Alternative Mobile:</b> {selected.alternative || "-"}</p>
-              <p><b>WhatsApp Number:</b> {selected.whatsapp || "-"}</p>
-              <p><b>Email ID:</b> {selected.email || "-"}</p>
-              <p><b>Full Address:</b> {selected.address}</p>
-              <p><b>Landmark:</b> {selected.landmark || "-"}</p>
-              <p><b>PIN Code:</b> {selected.pin}</p>
-              <p><b>City:</b> {selected.city}</p>
-              <p><b>State:</b> {selected.state}</p>
-              <p><b>Org Name:</b> {selected.org || "-"}</p>
-              <p><b>Vehicle Model:</b> {selected.vehicle}</p>
-              <p><b>Dealer Name:</b> {selected.dealer}</p>
-              <p><b>Charger Capacity:</b> {selected.capacity}</p>
-              <p><b>Create Date:</b> {selected.createDate}</p>
-            </div>
+            {Object.entries(selected).map(([key, value]) => (
+              <p key={key}>
+                <b>{key}:</b> {String(value ?? "-")}
+              </p>
+            ))}
 
             <div className="modalStatus">
               Installation Status: {selected.status}
             </div>
-
             <p className="modalNote">
-              Installation status can only be updated from the Admin Portal.
+              Installation status can only be updated from Admin Portal.
             </p>
-
             <button
-              className="primaryBtn closeBtn"
+              className="primaryBtn"
               onClick={() => setSelected(null)}
             >
               CLOSE
